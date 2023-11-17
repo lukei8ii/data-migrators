@@ -1,0 +1,43 @@
+service: data-migrators
+frameworkVersion: "3"
+
+custom:
+  localstack:
+    lambda:
+      mountCode: True
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+
+constructs:
+  migrate-user:
+    type: queue
+    batchSize: 100
+    maxConcurrency: 10
+    worker:
+      handler: src/user-service/process-job.handler
+      environment:
+        WATERDEEP_CONNECTION_STRING: ${env:waterdeepConnectionString}
+        USER_SERVICE_CONNECTION_STRING: ${env:userServiceConnectionString}
+      iamRoleStatements:
+        - Effect: Allow
+          Action: "rds-db:connect"
+          Resource:
+            - ${env:jwtKeySecretArn}
+
+functions:
+  enqueue-users:
+    handler: src/user-service/enqueue-jobs.handler
+    events:
+      - httpApi:
+          method: post
+          path: /migrate
+    environment:
+      WATERDEEP_CONNECTION_STRING: ${env:waterdeepConnectionString}
+      QUEUE_URL: ${construct:jobs.queueUrl}
+
+plugins:
+  - serverless-lift
+  - serverless-plugin-typescript
+  - serverless-localstack
